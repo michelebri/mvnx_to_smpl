@@ -100,7 +100,7 @@ Then provide the model weights (git-ignored, see **Models** section above).
 
 ## Credits
 
-- **`articulate/`** — SMPL IK/FK library, vendored from
+- **`articulate/`** — SMPL IK/FK library, from
   [nawta/nymeria_smpl_processor](https://github.com/nawta/nymeria_smpl_processor/tree/main/mvnx_to_smpl/core/articulate).
 - **`GMR/`** — [General Motion Retargeting](https://github.com/YanjieZe/GMR)
   (only the `booster_t1` assets are kept).
