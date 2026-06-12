@@ -7,14 +7,14 @@ humanoid robot performing the same motion (e.g. a kick), via SMPL → SMPL-X →
 ## Pipeline
 
 ```
-MVNX  ──(1)──►  raw skeleton video        (visualize_mvnx.py)
-MVNX  ──(2)──►  SMPL  local_poses .npz     (mvnx_to_smpl.py)
-SMPL  ──(3)──►  SMPL skeleton video        (visualize_smpl.py)   [sanity check]
-SMPL  ──(4)──►  SMPL-X .npz                (smpl_to_smplx_npz.py)
-SMPL-X ─(5)──►  Booster T1 video           (render_t1.py, via GMR/)
+MVNX   ──(1)──►  raw skeleton video        (visualize_mvnx.py)   [sanity check]
+MVNX   ──(2)──►  SMPL  local_poses .npz    (mvnx_to_smpl.py)
+SMPL   ──(3)──►  SMPL-X .npz               (smpl_to_smplx_npz.py)
+SMPL-X ──(4)──►  Booster T1 video + GMR pkl (render_t1.py, via GMR/)
+GMR pkl ─(5)──►  MimicKit pkl + csv         (prepare_pkl_for_train.py)
 ```
 
-Steps 1 and 3 are visual sanity checks; the production path is 2 → 4 → 5.
+Step 1 is a visual sanity check; the production path is 2 → 3 → 4 → 5.
 
 MVNX is exported at ~5.45 Hz and slerp-upsampled to 30 fps inside `mvnx_to_smpl.py`.
 
@@ -35,11 +35,13 @@ pixi run retarget input/ --skip-vis
 
 Output per ogni file `<name>.mvnx` → `output/<name>/`:
 ```
-output/<name>/skeleton.mp4   # step 1 – raw MVNX skeleton
+output/<name>/skeleton.mp4   # step 1 – raw MVNX skeleton (sanity check)
 output/<name>/smpl.npz       # step 2 – SMPL local_poses
-output/<name>/smpl_vis.mp4   # step 3 – SMPL skeleton sanity check
-output/<name>/smplx.npz      # step 4 – SMPL-X for GMR
-output/<name>/t1.mp4         # step 5 – Booster T1 render
+output/<name>/smplx.npz      # step 3 – SMPL-X for GMR
+output/<name>/t1.mp4         # step 4 – Booster T1 render
+output/<name>/t1_gmr.pkl     # step 4 – GMR format (root_pos, root_rot, dof_pos)
+output/<name>/t1_mimic.pkl   # step 5 – MimicKit format for RL training
+output/<name>/t1_mimic.csv   # step 5 – CSV format (pos + quat_xyzw + joints)
 ```
 
 ## Layout

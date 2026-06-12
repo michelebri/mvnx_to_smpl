@@ -1,0 +1,23 @@
+# Large model weights (download separately, see README)
+models/smpl/*.pkl
+models/smplx/*.pkl
+models/smplx/*.npz
+GMR/assets/body_models/smplx/*.npz
+GMR/assets/body_models/smplx/*.pkl
+
+# Generated output (videos, intermediate npz)
+output/*.mp4
+output/*.npz
+output/frames/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pixi/
+*.egg-info/
+
+# Logs
+MUJOCO_LOG.TXT
+output/*
+input/*

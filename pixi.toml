@@ -1,0 +1,36 @@
+[workspace]
+name = "mvnx-to-t1"
+version = "0.1.0"
+description = "Convert Xsens MVNX motion capture into a Booster T1 robot video"
+channels = ["conda-forge", "pytorch"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.10.*"
+mujoco = ">=3.8"
+numpy = ">=1.23,<2"
+scipy = "*"
+matplotlib = "*"
+
+[pypi-dependencies]
+torch = ">=2.3"
+smplx = "==0.1.28"
+mink = "==1.1.1"
+rich = "*"
+imageio = {version = "*", extras = ["ffmpeg"]}
+loop-rate-limiters = "*"
+opencv-python = "*"
+daqp = "*"
+trimesh = "*"
+tyro = "*"
+
+[tasks.retarget]
+cmd = "python pipeline.py"
+description = """
+Full MVNX -> Booster T1 pipeline.
+  Single file:  pixi run retarget input/kick.mvnx
+  Whole folder: pixi run retarget input/
+  Skip vis:     pixi run retarget input/ --skip-vis
+
+Output per file: output/<name>/{skeleton.mp4, smpl.npz, smpl_vis.mp4, smplx.npz, t1.mp4}
+"""
