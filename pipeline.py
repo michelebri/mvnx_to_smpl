@@ -91,20 +91,16 @@ def run_one(mvnx_path: Path, args):
     _s2sx.convert(str(out2), str(out3))
 
     # ── step 4: SMPL-X -> Booster T1 video + GMR pkl ────────────────────────
-    out4 = outdir / "t1.mp4"
+    out4     = outdir / "t1.mp4"
     out4_pkl = outdir / "t1_gmr.pkl"
     print(f"[4/5] Booster T1     → {out4.name}")
     _run_render(str(out3), str(out4), str(out4_pkl), args)
 
-    # ── step 5: GMR pkl -> MimicKit pkl + csv ────────────────────────────────
-    out5_pkl = outdir / "t1_mimic.pkl"
-    out5_csv = outdir / "t1_mimic.csv"
-    print(f"[5/5] MimicKit pkl   → {out5_pkl.name}")
-    import prepare_pkl_for_train as _ppt
-    _ppt.convert_gmr_to_mimickit(str(out4_pkl), str(out5_pkl),
-                                  loop_mode="wrap", start_frame=0,
-                                  end_frame=-1, output_fps=-1)
-    _ppt.main(pkl_file=str(out5_pkl), csv_file=str(out5_csv))
+    # ── step 5: GMR pkl -> mjlab tracking npz ────────────────────────────────
+    out5 = outdir / "t1_motion.npz"
+    print(f"[5/5] tracking npz   → {out5.name}")
+    import gmr_to_tracking as _g2t
+    _g2t.convert(str(out4_pkl), str(out5))
 
     print(f"\n  ✓  output/{name}/")
     return outdir
@@ -157,15 +153,13 @@ def _run_render(smplx_npz: str, out_mp4: str, out_pkl: str, args):
                     human_motion_data=None, follow_camera=False, rate_limit=False)
     viewer.close()
 
-    # Save GMR format pkl for prepare_pkl_for_train
+    # Save GMR pkl for gmr_to_tracking.py
     import pickle
     gmr_data = {
-        'fps': int(round(aligned_fps)),
-        'root_pos': np.array([q[:3]  for q in qpos_list]),   # (N, 3)
-        'root_rot': np.array([q[3:7] for q in qpos_list]),   # (N, 4) xyzw
-        'dof_pos':  np.array([q[7:]  for q in qpos_list]),   # (N, D)
-        'local_body_pos': None,
-        'link_body_list': None,
+        'fps':      int(round(aligned_fps)),
+        'root_pos': np.array([q[:3]  for q in qpos_list], dtype=np.float32),  # (T, 3)
+        'root_rot': np.array([q[3:7] for q in qpos_list], dtype=np.float32),  # (T, 4) wxyz
+        'dof_pos':  np.array([q[7:]  for q in qpos_list], dtype=np.float32),  # (T, D)
     }
     with open(out_pkl, 'wb') as f:
         pickle.dump(gmr_data, f)
