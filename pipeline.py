@@ -2,14 +2,14 @@
 MVNX -> Booster T1 pipeline.
 
 Usage:
-    python pipeline.py input/kick_flavio-004#MVN\ System\ 2.mvnx   # single file
+    python pipeline.py input/kick.mvnx                              # single file
     python pipeline.py input/                                        # whole folder
 
 Output for each file <name>.mvnx:
     output/<name>/skeleton.mp4    step 1 - raw MVNX skeleton
     output/<name>/smpl.npz        step 2 - SMPL local_poses
     output/<name>/smpl_vis.mp4    step 3 - SMPL skeleton sanity check
-    output/<name>/smplx.npz       step 4 - SMPL-X for GMR
+    output/<name>/smplx.npz       step 4 - SMPL-X
     output/<name>/t1.mp4          step 5 - Booster T1 render
 """
 
@@ -20,7 +20,6 @@ from pathlib import Path
 
 import numpy as np
 
-# ── chumpy stub (needed before any articulate/SMPL import) ───────────────────
 _ch = types.ModuleType("chumpy")
 class _Ch:
     def __init__(self, *a, **k): self._r = None
@@ -39,16 +38,14 @@ _ch.Ch = _Ch
 sys.modules.setdefault("chumpy", _ch)
 sys.modules.setdefault("chumpy.ch", _ch)
 
-# ── paths ────────────────────────────────────────────────────────────────────
 ROOT        = Path(__file__).parent
 SMPL_FILE   = ROOT / "models" / "smpl" / "SMPL_NEUTRAL.pkl"
 GMR_DIR     = ROOT / "GMR"
-ART_PATH    = ROOT   # articulate/ lives here
+ART_PATH    = ROOT
 
 sys.path.insert(0, str(ART_PATH))
 sys.path.insert(0, str(GMR_DIR))
 
-# ── lazy imports (heavy, only load once) ─────────────────────────────────────
 import torch
 from scipy.spatial.transform import Rotation as R, Slerp
 
@@ -59,9 +56,8 @@ import visualize_mvnx       as _vmvnx
 
 
 def stem(mvnx_path: Path) -> str:
-    """Clean filename stem: strip '#...' suffix and spaces."""
-    name = mvnx_path.stem          # e.g. "kick_flavio-004#MVN System 2"
-    name = name.split("#")[0]      # "kick_flavio-004"
+    name = mvnx_path.stem
+    name = name.split("#")[0]
     return name.strip().replace(" ", "_")
 
 
@@ -74,29 +70,24 @@ def run_one(mvnx_path: Path, args):
     print(f"  {mvnx_path.name}  →  output/{name}/")
     print(f"{'='*60}")
 
-    # ── step 1: raw MVNX skeleton video ──────────────────────────────────────
     if not args.skip_vis:
         out1 = outdir / "skeleton.mp4"
         print(f"[1/5] skeleton video → {out1.name}")
         _vmvnx.make_video(str(mvnx_path), str(out1), target_fps=30)
 
-    # ── step 2: MVNX -> SMPL .npz ────────────────────────────────────────────
     out2 = outdir / "smpl.npz"
     print(f"[2/5] MVNX -> SMPL   → {out2.name}")
     _m2s.convert(str(mvnx_path), str(out2))
 
-    # ── step 3: SMPL -> SMPL-X .npz ──────────────────────────────────────────
     out3 = outdir / "smplx.npz"
     print(f"[3/4] SMPL -> SMPL-X → {out3.name}")
     _s2sx.convert(str(out2), str(out3))
 
-    # ── step 4: SMPL-X -> Booster T1 video + GMR pkl ────────────────────────
     out4     = outdir / "t1.mp4"
     out4_pkl = outdir / "t1_gmr.pkl"
     print(f"[4/5] Booster T1     → {out4.name}")
     _run_render(str(out3), str(out4), str(out4_pkl), args)
 
-    # ── step 5: GMR pkl -> mjlab tracking npz ────────────────────────────────
     out5 = outdir / "t1_motion.npz"
     print(f"[5/5] tracking npz   → {out5.name}")
     import gmr_to_tracking as _g2t
@@ -107,7 +98,7 @@ def run_one(mvnx_path: Path, args):
 
 
 def _run_render(smplx_npz: str, out_mp4: str, out_pkl: str, args):
-    """Inline version of render_t1.main() so we avoid re-importing GMR each call."""
+    """Inline version of render_t1.main() to avoid re-importing on each call."""
     import pathlib, numpy as np
     from scipy.spatial.transform import Rotation as ScipyR
     from general_motion_retargeting import GeneralMotionRetargeting as GMR, RobotMotionViewer
@@ -119,7 +110,6 @@ def _run_render(smplx_npz: str, out_mp4: str, out_pkl: str, args):
     frames, aligned_fps = get_smplx_data_offline_fast(
         smplx_data, body_model, smplx_output, tgt_fps=30)
 
-    # Y-up (SMPL-X) -> Z-up (MuJoCo/GMR)
     yup2zup = np.array([[1,0,0],[0,0,-1],[0,1,0]])
     yup2zup_q = ScipyR.from_matrix(yup2zup).as_quat(scalar_first=True)
     for frame in frames:
@@ -153,13 +143,12 @@ def _run_render(smplx_npz: str, out_mp4: str, out_pkl: str, args):
                     human_motion_data=None, follow_camera=False, rate_limit=False)
     viewer.close()
 
-    # Save GMR pkl for gmr_to_tracking.py
     import pickle
     gmr_data = {
         'fps':      int(round(aligned_fps)),
-        'root_pos': np.array([q[:3]  for q in qpos_list], dtype=np.float32),  # (T, 3)
-        'root_rot': np.array([q[3:7] for q in qpos_list], dtype=np.float32),  # (T, 4) wxyz
-        'dof_pos':  np.array([q[7:]  for q in qpos_list], dtype=np.float32),  # (T, D)
+        'root_pos': np.array([q[:3]  for q in qpos_list], dtype=np.float32),
+        'root_rot': np.array([q[3:7] for q in qpos_list], dtype=np.float32),
+        'dof_pos':  np.array([q[7:]  for q in qpos_list], dtype=np.float32),
     }
     with open(out_pkl, 'wb') as f:
         pickle.dump(gmr_data, f)

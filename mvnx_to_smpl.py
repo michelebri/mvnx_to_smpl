@@ -1,40 +1,24 @@
 """
-MVNX -> SMPL converter using the proven articulate pipeline.
-
-Pipeline (from preprocess_mvnx_to_smpl.py / Nymeria project):
-  1. Read global segment quaternions + pelvis position from MVNX
-  2. Convert coordinate system: Xsens -> SMPL  ([w,x,y,z] -> [w,z,x,y], pos [x,y,z]->[y,z,x])
-  3. Map 23 Xsens segments -> 24 SMPL joints (XSENS_TO_SMPL)
-  4. articulate.inverse_kinematics_R: global rotation matrices -> local rotation matrices
-  5. Upsample to target_fps via slerp
-
-Output NPZ keys: global_poses (T,24,3,3), local_poses (T,24,3,3), root_positions (T,3)
+MVNX -> SMPL local_poses .npz
 
 Usage:
-    python mvnx_to_smpl.py "input/kick_flavio-004#MVN System 2.mvnx" -o output/flavio_smpl.npz
+    python mvnx_to_smpl.py input/kick.mvnx -o output/smpl.npz
 """
 
 import sys
 import types
-import numpy as np   # needed by chumpy stub below
+import numpy as np
 
-# chumpy is used only for deserialization of old SMPL pkl files; it doesn't
-# build on modern numpy. Provide a minimal fake that supports pickle and exposes
-# .r so downstream code can extract the underlying numpy array.
 _ch_mod = types.ModuleType("chumpy")
 
 class _Ch:
-    """Minimal chumpy.Ch stub for unpickling SMPL pkl files.
-    Stores the raw numpy array in self.r (the chumpy convention)."""
     def __init__(self, *args, **kwargs):
         self.r = None
     def __setstate__(self, state):
-        # chumpy stores data in state dict; 'x' holds the flat values
         if isinstance(state, dict):
             x = state.get('x', state.get('_x', None))
             if x is not None:
                 self.r = np.asarray(x, dtype=np.float32)
-            # also try direct array fields
             for k, v in state.items():
                 if isinstance(v, np.ndarray) and v.dtype.kind == 'f':
                     self.r = v.astype(np.float32)
@@ -54,15 +38,12 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R, Slerp
 
-# articulate library lives in the repo root
 _ART_PATH = Path(__file__).parent
 if str(_ART_PATH) not in sys.path:
     sys.path.insert(0, str(_ART_PATH))
 
 import articulate as art
 
-# Xsens segment index -> SMPL joint index (23 Xsens -> 24 SMPL)
-# From Nymeria / preprocess_mvnx_to_smpl.py
 XSENS_TO_SMPL = [0, 19, 15, 1, 20, 16, 3, 21, 17, 4, 22, 18,
                   5, 11, 7, 6, 12, 8, 13, 9, 13, 9, 13, 9]
 
@@ -106,10 +87,10 @@ def parse_mvnx(path):
         q = np.array(quat_el.text.split(), dtype=np.float32).reshape(23, 4)
         p = np.array(pos_el.text.split(), dtype=np.float32).reshape(23, 3)
         orientations.append(q)
-        positions.append(p[0])  # pelvis = segment 0
+        positions.append(p[0])
 
-    orientations = np.stack(orientations)   # (T, 23, 4)
-    positions    = np.stack(positions)       # (T, 3)
+    orientations = np.stack(orientations)
+    positions    = np.stack(positions)
     return orientations, positions, src_fps or 5.45455
 
 
@@ -118,14 +99,12 @@ def convert_coord(orientations, root_positions):
     Position: [x,y,z] -> [y,z,x]  (Xsens Y-left,Z-up -> SMPL Y-up,Z-back)
     Quaternion wxyz: [w,x,y,z] -> [w,z,x,y]
     """
-    # position: swap axes
     rp = root_positions[:, [1, 2, 0]].copy()
 
-    # quaternion: reorder xyz components (keep w) -- match preprocess_mvnx_to_smpl.py
     ori = orientations.copy()
-    ori[:, :, 1] = orientations[:, :, 2]   # new x = old y
-    ori[:, :, 2] = orientations[:, :, 3]   # new y = old z
-    ori[:, :, 3] = orientations[:, :, 1]   # new z = old x
+    ori[:, :, 1] = orientations[:, :, 2]
+    ori[:, :, 2] = orientations[:, :, 3]
+    ori[:, :, 3] = orientations[:, :, 1]
     return ori, rp
 
 
@@ -138,7 +117,7 @@ def quat_to_rotmat(q):
 def to_smpl_global(orientations):
     """orientations (T,23,4) -> global_poses (T,24,3,3)"""
     T = orientations.shape[0]
-    rot = quat_to_rotmat(orientations)            # (T,23,3,3)
+    rot = quat_to_rotmat(orientations)
     glb = torch.eye(3).repeat(T, 24, 1, 1)
     for smpl_idx, xsens_idx in enumerate(XSENS_TO_SMPL):
         glb[:, smpl_idx] = rot[:, xsens_idx]
@@ -156,10 +135,8 @@ def slerp_upsample(local_poses, root_positions, src_fps, tgt_fps):
     M = int(round(duration * tgt_fps)) + 1
     dst_t = np.linspace(0, duration, M)
 
-    # root_positions: linear
     rp = np.stack([np.interp(dst_t, src_t, root_positions[:, k]) for k in range(3)], axis=-1)
 
-    # local_poses: per-joint slerp (rotvec via scipy)
     lp_np = local_poses.numpy()
     from scipy.spatial.transform import Rotation as R, Slerp
     out = np.zeros((M, 24, 3, 3), dtype=np.float32)
@@ -180,8 +157,8 @@ def convert(mvnx_path, out_path, target_fps=30.0):
     print(f"  Parsed {len(ori)} frames @ {src_fps:.2f} Hz")
 
     ori, rp = convert_coord(ori, rp)
-    global_poses = to_smpl_global(ori).to(device)                # (T,24,3,3)
-    local_poses  = body_model.inverse_kinematics_R(global_poses) # (T*24,3,3) or (T,24,3,3)
+    global_poses = to_smpl_global(ori).to(device)
+    local_poses  = body_model.inverse_kinematics_R(global_poses)
     local_poses  = local_poses.view(global_poses.shape[0], 24, 3, 3).cpu()
     global_poses = global_poses.cpu()
 
@@ -190,7 +167,7 @@ def convert(mvnx_path, out_path, target_fps=30.0):
     T = local_poses.shape[0]
     np.savez_compressed(
         out_path,
-        global_poses=global_poses.numpy().astype(np.float32),   # pre-upsample, for reference
+        global_poses=global_poses.numpy().astype(np.float32),
         local_poses=local_poses.numpy().astype(np.float32),
         root_positions=rp.astype(np.float32),
         fps=np.array(out_fps, dtype=np.float32),

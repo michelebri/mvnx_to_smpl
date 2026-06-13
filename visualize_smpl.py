@@ -1,7 +1,7 @@
 """
-Step 3: Visualize SMPL poses as a skeleton video using articulate FK.
+Visualize SMPL poses as a skeleton video.
 Usage:
-    python visualize_smpl.py output/flavio_smpl.npz
+    python visualize_smpl.py output/smpl.npz
 """
 import sys, types, argparse
 import numpy as np

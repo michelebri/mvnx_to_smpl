@@ -3,8 +3,8 @@ SMPL mesh video using pyrender + trimesh (no pytorch3d needed).
 Static global camera, Phong shading, same visual style as GVHMR.
 
 Usage:
-    python visualize_smpl_mesh.py output/kick_flavio-004/smpl.npz
-    python visualize_smpl_mesh.py output/kick_flavio-004/smpl.npz -o output/kick_flavio-004/smpl_mesh.mp4
+    python visualize_smpl_mesh.py output/kick/smpl.npz
+    python visualize_smpl_mesh.py output/kick/smpl.npz -o output/kick/smpl_mesh.mp4
 """
 
 import os, sys, types, argparse

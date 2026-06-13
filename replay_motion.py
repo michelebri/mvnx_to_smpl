@@ -1,11 +1,9 @@
 """
-Kinematic replay of a tracking npz on the T1_23dof model — no physics, no policy.
-Pure visual check that the motion file is correct: sets root + joints each frame
-from body_pos_w[:,0] / body_quat_w[:,0] / joint_pos and renders.
+Kinematic replay of a tracking npz on the T1_23dof model (no physics, no policy).
 
 Usage:
-    python replay_motion.py output/kick_flavio-004/t1_motion.npz          # save mp4
-    python replay_motion.py output/kick_flavio-004/t1_motion.npz --view   # live viewer
+    python replay_motion.py output/kick/t1_motion.npz          # save mp4
+    python replay_motion.py output/kick/t1_motion.npz --view   # live viewer
 """
 
 import argparse

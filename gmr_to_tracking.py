@@ -1,14 +1,5 @@
 """
-Convert a GMR pkl (root_pos, root_rot wxyz, dof_pos[23]) to a mjlab-compatible
-tracking npz using the T1_23dof MuJoCo model from colosseum.
-
-GMR retargets onto T1_serial.xml, whose 23-joint order is IDENTICAL to
-colosseum's T1_23dof.xml (verified joint-by-joint), so dof_pos maps 1:1
-onto qpos[7:30] — no reordering, no default fill.
-
-Output keys match colosseum's convert_replay_to_tracking.py:
-    joint_pos, joint_vel, body_pos_w, body_quat_w,
-    body_lin_vel_w, body_ang_vel_w, fps, body_names
+GMR pkl -> mjlab tracking npz (T1_23dof MuJoCo model).
 
 Usage:
     python gmr_to_tracking.py output/kick/t1_gmr.pkl output/kick/t1_motion.npz
@@ -25,12 +16,8 @@ from tqdm import tqdm
 
 ROOT       = Path(__file__).parent
 XML        = ROOT / "models" / "t1_23dof" / "T1_23dof.xml"
-# colosseum's mimic env steps at decimation(4) * timestep(0.005) = 0.02 s = 50 Hz.
-# MotionCommand advances one frame per env step and assumes the clip is sampled
-# at that rate, so the tracking npz MUST be 50 Hz (matches convert_replay_to_tracking).
 OUTPUT_FPS = 50.0
 
-# Joint order shared by GMR's T1_serial.xml and colosseum's T1_23dof.xml.
 JOINT_NAMES = [
     "AAHead_yaw", "Head_pitch",
     "Left_Shoulder_Pitch", "Left_Shoulder_Roll", "Left_Elbow_Pitch", "Left_Elbow_Yaw",
@@ -63,15 +50,13 @@ def _resample(root_pos, root_rot, dof_pos, src_fps, dst_fps):
     t_dst = np.arange(n_out) / dst_fps
     t_dst = np.clip(t_dst, 0.0, t_src[-1])
 
-    # linear interp for positions and joint angles
     rp = np.stack([np.interp(t_dst, t_src, root_pos[:, k]) for k in range(3)], axis=1)
     dp = np.stack([np.interp(t_dst, t_src, dof_pos[:, k]) for k in range(dof_pos.shape[1])], axis=1)
 
-    # slerp for root orientation (input wxyz -> scipy xyzw)
     key_rots = R.from_quat(root_rot[:, [1, 2, 3, 0]])
     slerp = Slerp(t_src, key_rots)
     rr_xyzw = slerp(t_dst).as_quat()
-    rr = rr_xyzw[:, [3, 0, 1, 2]]  # back to wxyz
+    rr = rr_xyzw[:, [3, 0, 1, 2]]
 
     return rp, rr, dp
 
@@ -80,14 +65,13 @@ def convert(pkl_path: str, out_path: str, fps: float = OUTPUT_FPS) -> None:
     with open(pkl_path, "rb") as f:
         gmr = pickle.load(f)
 
-    root_pos = np.array(gmr["root_pos"], dtype=np.float64)   # (T, 3)
-    root_rot = np.array(gmr["root_rot"], dtype=np.float64)   # (T, 4) wxyz
-    dof_pos  = np.array(gmr["dof_pos"],  dtype=np.float64)   # (T, 23)
+    root_pos = np.array(gmr["root_pos"], dtype=np.float64)
+    root_rot = np.array(gmr["root_rot"], dtype=np.float64)
+    dof_pos  = np.array(gmr["dof_pos"],  dtype=np.float64)
     src_fps  = float(gmr["fps"])
 
     assert dof_pos.shape[1] == 23, f"expected 23 dofs, got {dof_pos.shape[1]}"
 
-    # Resample to the env step rate (50 Hz) so MotionCommand plays back at real time.
     root_pos, root_rot, dof_pos = _resample(root_pos, root_rot, dof_pos, src_fps, fps)
     T = root_pos.shape[0]
     if abs(src_fps - fps) > 1e-6:
@@ -97,24 +81,18 @@ def convert(pkl_path: str, out_path: str, fps: float = OUTPUT_FPS) -> None:
     data  = mujoco.MjData(model)
     model.opt.timestep = 1.0 / fps
 
-    # qpos addresses of the 23 joints, in the GMR/colosseum shared order.
     qpos_adr = []
     for name in JOINT_NAMES:
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
         assert jid >= 0, f"joint {name} not in model"
         qpos_adr.append(model.jnt_qposadr[jid])
     qpos_adr = np.array(qpos_adr)
-    # Sanity: must be the contiguous 7..29 block.
     assert qpos_adr.tolist() == list(range(7, 30)), qpos_adr.tolist()
 
     body_names = _all_body_names(model)
     print(f"T1_23dof: {model.nbody} bodies, {len(JOINT_NAMES)} joints")
     print(f"Input: {T} frames, {dof_pos.shape[1]} dofs, src_fps={gmr['fps']}")
 
-    # Ground-offset: GMR retargets onto T1_serial.xml, whose foot geoms sit a few
-    # cm higher off the ground than colosseum's T1_23dof feet. Drop the whole
-    # trajectory by a constant so the lowest collision geom over the clip rests
-    # on z=0 (matches colosseum's spawn where feet touch the floor).
     min_geom_z = np.inf
     for i in range(T):
         data.qpos[:3]   = root_pos[i]
@@ -138,14 +116,10 @@ def convert(pkl_path: str, out_path: str, fps: float = OUTPUT_FPS) -> None:
     for i in tqdm(range(T)):
         data.qpos[:3]    = root_pos[i]
         data.qpos[3:7]   = root_rot[i]
-        data.qpos[7:30]  = dof_pos[i]      # 1:1 mapping
+        data.qpos[7:30]  = dof_pos[i]
         data.qvel[:]     = 0.0
         mujoco.mj_forward(model, data)
 
-        # Drop MuJoCo body 0 ('world'): mjlab's robot.data.body_link_pos_w (the
-        # reference format) indexes robot bodies only, with Trunk at index 0.
-        # MotionCommand uses body_pos_w[:, 0] as the robot root, so 'world' here
-        # would spawn the robot at the origin with the torso on the floor.
         xpos  = data.xpos[1:].copy()
         xquat = data.xquat[1:].copy()
 
@@ -161,13 +135,12 @@ def convert(pkl_path: str, out_path: str, fps: float = OUTPUT_FPS) -> None:
         prev_xpos, prev_xquat = xpos, xquat
 
         log["joint_pos"].append(data.qpos[7:30].copy().astype(np.float32))
-        log["joint_vel"].append(np.zeros(23, dtype=np.float32))  # static IK frame
+        log["joint_vel"].append(np.zeros(23, dtype=np.float32))
         log["body_pos_w"].append(xpos.astype(np.float32))
         log["body_quat_w"].append(xquat.astype(np.float32))
         log["body_lin_vel_w"].append(linvel.astype(np.float32))
         log["body_ang_vel_w"].append(angvel.astype(np.float32))
 
-    # joint_vel by finite difference (cleaner than leaving zeros)
     jp = np.stack(log["joint_pos"])
     jv = np.zeros_like(jp)
     jv[1:] = (jp[1:] - jp[:-1]) / dt
@@ -179,7 +152,7 @@ def convert(pkl_path: str, out_path: str, fps: float = OUTPUT_FPS) -> None:
 
     out = {k: np.stack(v, axis=0) for k, v in log.items()}
     out["fps"]        = np.array([fps], dtype=np.float32)
-    out["body_names"] = np.array(body_names[1:])  # drop 'world' to match body_pos_w
+    out["body_names"] = np.array(body_names[1:])
 
     np.savez(out_path, **out)
     print(f"Saved {out_path}")

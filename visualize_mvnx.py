@@ -1,11 +1,9 @@
 """
-Step 1: Visualize raw MVNX skeleton as a video.
-Uses only segment POSITIONS (the clean signal) to draw a 3D stick figure.
-No SMPL, no retargeting — just "what is actually in the mocap file".
+Visualize raw MVNX skeleton as a video (stick figure, segment positions only).
 
 Usage:
-    python visualize_mvnx.py input/kick_flavio-004#MVN\ System\ 2.mvnx
-    python visualize_mvnx.py input/kick_flavio-004#MVN\ System\ 2.mvnx --target-fps 30
+    python visualize_mvnx.py input/kick.mvnx
+    python visualize_mvnx.py input/kick.mvnx --target-fps 30
 """
 
 import argparse

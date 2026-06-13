@@ -1,21 +1,8 @@
 """
-Convert flavio_smpl.npz (SMPL local_poses) -> SMPL-X format NPZ for GMR.
-
-SMPL local_poses (T,24,3,3):
-  joint 0  = root (-> root_orient, axis-angle (T,3))
-  joints 1-23 = body (-> pose_body, axis-angle (T,69) but SMPL-X uses 21 joints = 63)
-
-SMPL-X pose_body uses joints 1-21 (22 body joints minus root minus 2 hands = 21 joints = 63 vals)
-SMPL has 24 joints: root(0), pelvis children (1,2,3), spine (3,6,9), neck(12), head(15),
-  shoulders (13,14,16,17)...
-
-Since SMPL and SMPL-X share the first 22 body joints (0-21 in local pose space),
-we take:
-  root_orient = local_poses[:,0] as axis-angle (T,3)
-  pose_body   = local_poses[:,1:22] as axis-angle (T,63)
+SMPL local_poses .npz -> SMPL-X .npz.
 
 Usage:
-    python smpl_to_smplx_npz.py output/flavio_smpl.npz -o output/flavio_smplx.npz
+    python smpl_to_smplx_npz.py output/smpl.npz -o output/smplx.npz
 """
 
 import argparse

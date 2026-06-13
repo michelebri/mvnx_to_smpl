@@ -1,10 +1,3 @@
-r"""
-    SMPL/MANO/SMPLH parametric model. Modified from https://github.com/CalciferZh/SMPL.
-
-    Vendored from nawta/nymeria_smpl_processor:
-    https://github.com/nawta/nymeria_smpl_processor/tree/main/mvnx_to_smpl/core/articulate
-"""
-
 
 __all__ = ['ParametricModel']
 
